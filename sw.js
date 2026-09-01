@@ -1,7 +1,7 @@
 // Service Worker: legt die App auf dem Geraet ab, damit sie ohne Internet startet.
 // WICHTIG: Bei jeder Aenderung an index.html die Versionsnummer erhoehen,
 // sonst laedt das Handy weiter die alte Fassung.
-const VERSION = 'anwesenheit-v1';
+const VERSION = 'anwesenheit-v2';
 
 const DATEIEN = [
   './',

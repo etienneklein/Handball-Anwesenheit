@@ -286,10 +286,12 @@ function renderErfassen(el) {
   el.querySelector('#sp').onclick = () => {
     state.sessions[draft.datum] = { ...draft.anwesend };
     save();
-    toast(`${deDatum(draft.datum)} gespeichert`);
+    const dat = draft.datum;
     draft = null;
     tab = 'übersicht';
     render();
+    toast(`${deDatum(dat)} gespeichert`);
+    if (state.autoBackup) backup();
   };
 }
 
@@ -353,12 +355,13 @@ function sicherungHtml(mitCsv) {
     <p class="note">Das Backup enthält Kader und alle Trainings und lässt sich hier wieder einlesen. Die CSV ist zum Anschauen und für J+S.</p>
     <label class="kad" style="cursor:pointer">
       <input type="checkbox" id="ab" ${state.autoBackup ? 'checked' : ''} style="width:20px;height:20px">
-      <span class="nm">Nach jedem Training automatisch sichern</span>
+      <span class="nm">Nach jedem Training zum Sichern anbieten</span>
     </label>
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn ghost" id="bk">Backup jetzt</button>
       <button class="btn ghost" id="rs">Backup einlesen</button>
     </div>
+    <button class="btn ghost" id="tx" style="margin-top:8px">Backup als Text anzeigen</button>
     <input type="file" id="fi" accept="application/json,.json" style="display:none">
     ${mitCsv ? `<div class="bar" style="margin-top:24px">
       <button class="btn ghost" id="csv">Tabelle als CSV herunterladen</button>
@@ -366,8 +369,10 @@ function sicherungHtml(mitCsv) {
 }
 
 function bindeSicherung(el) {
-  el.querySelector('#bk').onclick = () => backup(false);
+  el.querySelector('#bk').onclick = () => backup();
   el.querySelector('#ab').onchange = e => { state.autoBackup = e.target.checked; save(); };
+  el.querySelector('#tx').onclick = () => zeigeText(JSON.stringify(
+    { app: 'anwesenheit', version: 1, erstellt: new Date().toISOString(), daten: state }, null, 2));
   const fi = el.querySelector('#fi');
   el.querySelector('#rs').onclick = () => fi.click();
   fi.onchange = () => { if (fi.files[0]) einlesen(fi.files[0]); };
@@ -382,11 +387,47 @@ function ladeRunter(text, name, typ) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function backup(still) {
+async function backup() {
   const paket = { app: 'anwesenheit', version: 1, erstellt: new Date().toISOString(), daten: state };
-  ladeRunter(JSON.stringify(paket, null, 2),
-    'anwesenheit-backup.json', 'application/json');
-  if (!still) toast('Backup gespeichert');
+  const text = JSON.stringify(paket, null, 2);
+  const name = 'anwesenheit-backup.json';
+
+  // 1. Teilen-Menue: funktioniert auch, wenn die App vom Homescreen laeuft
+  try {
+    const datei = new File([text], name, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [datei] })) {
+      await navigator.share({ files: [datei], title: name });
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;   // Nutzer hat abgebrochen
+  }
+
+  // 2. Normaler Download im Browser
+  try {
+    ladeRunter(text, name, 'application/json');
+    toast('Backup gespeichert');
+    return;
+  } catch (e) { /* faellt durch */ }
+
+  // 3. Notfall: Text zum Kopieren anzeigen
+  zeigeText(text);
+}
+
+function zeigeText(text) {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;background:#f7f7f5;padding:16px;z-index:99;display:flex;flex-direction:column;gap:12px';
+  box.innerHTML = `
+    <p class="note" style="margin:0">Speichern hat nicht geklappt. Kopier den Text und sichere ihn als Datei.</p>
+    <textarea readonly style="flex:1;font-family:monospace;font-size:12px;padding:10px;border:1px solid var(--line);border-radius:6px">${esc(text)}</textarea>
+    <button class="btn" id="kop">Kopieren</button>
+    <button class="btn ghost" id="zu">Schliessen</button>`;
+  document.body.appendChild(box);
+  box.querySelector('#kop').onclick = async () => {
+    try { await navigator.clipboard.writeText(text); toast('Kopiert'); }
+    catch (e) { box.querySelector('textarea').select(); }
+  };
+  box.querySelector('#zu').onclick = () => box.remove();
 }
 
 function einlesen(datei) {
