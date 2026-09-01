@@ -390,7 +390,10 @@ function ladeRunter(text, name, typ) {
 async function backup() {
   const paket = { app: 'anwesenheit', version: 1, erstellt: new Date().toISOString(), daten: state };
   const text = JSON.stringify(paket, null, 2);
-  const name = 'anwesenheit-backup.json';
+  const j = new Date();
+  const z = n => String(n).padStart(2, '0');
+  const stempel = `${j.getFullYear()}-${z(j.getMonth() + 1)}-${z(j.getDate())}-${z(j.getHours())}${z(j.getMinutes())}`;
+  const name = `anwesenheit-backup-${stempel}.json`;
 
   // 1. Teilen-Menue: funktioniert auch, wenn die App vom Homescreen laeuft
   try {
