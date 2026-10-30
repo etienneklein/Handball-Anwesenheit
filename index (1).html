@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f7a4d">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Anwesenheit">
+<title>Handball Anwesenheit</title>
+<style>
+  html, body { margin: 0; background: #f7f7f5; }
+  body { padding: 16px 16px env(safe-area-inset-bottom); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<style>
+  :root {
+    --ink: #16181d;
+    --paper: #f7f7f5;
+    --line: #d8d8d2;
+    --da: #1f7a4d;
+    --da-bg: #e4f2ea;
+    --weg: #b3261e;
+    --weg-bg: #fbe9e7;
+    --mute: #6b6f76;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  #app {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 0 0 96px;
+    line-height: 1.45;
+  }
+  #app h1 { font-size: 21px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  #app h2 { font-size: 15px; font-weight: 700; margin: 0 0 10px; }
+
+  .top { display: flex; gap: 4px; border-bottom: 2px solid var(--ink); margin-bottom: 18px; }
+  .tab {
+    flex: 1; padding: 12px 6px; border: 0; background: none; cursor: pointer;
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--mute);
+    border-bottom: 3px solid transparent; margin-bottom: -2px;
+  }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .tab:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+
+  .head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
+  .count { font-size: 13px; color: var(--mute); font-variant-numeric: tabular-nums; }
+
+  .row {
+    display: flex; align-items: center; gap: 12px;
+    width: 100%; text-align: left; font: inherit;
+    padding: 14px; margin-bottom: 6px;
+    border: 1px solid var(--line); border-left-width: 5px;
+    border-radius: 6px; background: #fff; cursor: pointer;
+  }
+  .row:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .row .nm { flex: 1; font-size: 16px; font-weight: 500; }
+  .row .st { font-size: 13px; font-weight: 700; }
+  .row.da { border-left-color: var(--da); background: var(--da-bg); }
+  .row.da .st { color: var(--da); }
+  .row.weg { border-left-color: var(--weg); background: var(--weg-bg); }
+  .row.weg .st { color: var(--weg); }
+  .row.weg .nm { text-decoration: line-through; color: var(--mute); }
+
+  .selten { margin-top: 24px; }
+  .selten summary {
+    cursor: pointer; font-size: 14px; font-weight: 600; color: var(--mute);
+    padding: 10px 0; list-style: none;
+  }
+  .selten summary::-webkit-details-marker { display: none; }
+  .selten summary::before { content: "▸ "; }
+  .selten[open] summary::before { content: "▾ "; }
+
+  .bar { position: sticky; bottom: 0; padding: 12px 0 0; background: linear-gradient(to top, var(--paper) 72%, transparent); }
+  .btn {
+    width: 100%; padding: 15px; border: 0; border-radius: 6px;
+    background: var(--ink); color: #fff; font: inherit; font-size: 16px;
+    font-weight: 600; cursor: pointer;
+  }
+  .btn.ghost { background: none; color: var(--ink); border: 1px solid var(--line); }
+  .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .field { display: flex; gap: 8px; margin-bottom: 16px; }
+  input[type="text"], input[type="date"] {
+    flex: 1; padding: 12px; font: inherit; font-size: 16px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+    min-width: 0;
+  }
+  .add { padding: 0 18px; border: 0; border-radius: 6px; background: var(--ink); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+
+  .kad { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .kad .nm { flex: 1; font-size: 16px; }
+  .kad .nm small { display: block; font-size: 12px; color: var(--mute); }
+  .flip { border: 1px solid var(--line); background: #fff; border-radius: 5px; font: inherit; font-size: 12px; font-weight: 600; padding: 7px 10px; cursor: pointer; color: var(--mute); }
+  .flip.on { border-color: var(--weg); color: var(--weg); background: var(--weg-bg); }
+  .nr { display: block; margin-top: 4px; width: 130px; padding: 6px 8px !important; font-size: 14px !important; flex: none !important; }
+  .nds label { display: block; font-size: 12px; font-weight: 600; color: var(--mute); margin: 10px 0 4px; }
+  .nds input { width: 100%; }
+  .nds .zwei { display: flex; gap: 8px; }
+  .nds .zwei > div { flex: 1; min-width: 0; }
+  .typ { display: flex; gap: 6px; margin-bottom: 12px; }
+  .typ button { flex: 1; padding: 11px; font: inherit; font-size: 15px; font-weight: 600; border: 1px solid var(--line); background: #fff; color: var(--mute); border-radius: 6px; cursor: pointer; }
+  .typ button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .info { font-size: 13px; color: var(--mute); margin: -4px 0 14px; }
+  .spiel { margin: -4px 0 14px; }
+  .spiel label { display: block; font-size: 12px; font-weight: 600; color: var(--mute); margin: 8px 0 4px; }
+  .spiel input { width: 100%; padding: 10px; font: inherit; font-size: 16px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); }
+  .spiel .zwei { display: flex; gap: 8px; }
+  .spiel .zwei > div { flex: 1; min-width: 0; }
+  .tag { font-size: 11px; font-weight: 700; color: #fff; background: var(--da); border-radius: 4px; padding: 2px 6px; margin-left: 6px; vertical-align: 2px; }
+  .warn { font-size: 13px; color: var(--weg); background: var(--weg-bg); padding: 10px 12px; border-radius: 6px; margin: 12px 0 0; }
+  .del { border: 0; background: none; color: var(--mute); font: inherit; font-size: 20px; cursor: pointer; padding: 2px 6px; line-height: 1; }
+  .del:hover { color: var(--weg); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; color: var(--mute); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .quote { font-weight: 700; }
+
+  .empty { padding: 40px 20px; text-align: center; color: var(--mute); font-size: 15px; }
+  .note { font-size: 13px; color: var(--mute); margin: 0 0 16px; }
+  .sess { display: flex; align-items: baseline; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .sess .d { font-weight: 600; font-size: 15px; }
+  .sess .s { flex: 1; font-size: 13px; color: var(--mute); }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; background: var(--ink); color: #fff; padding: 12px 20px; border-radius: 6px; font-size: 14px; z-index: 50; }
+  @media (prefers-reduced-motion: no-preference) {
+    .toast { animation: pop .18s ease-out; }
+    @keyframes pop { from { opacity: 0; transform: translate(-50%, 8px); } }
+  }
+</style>
+
+<script>
+const KEY = 'anwesenheit:v1';
+const app = document.getElementById('app');
+
+let state = { kader: [], sessions: {}, autoBackup: true };
+let tab = 'erfassen';
+let draft = null;
+let loaded = false;
+let delK = null;   // Kader-Eintrag, der auf Bestaetigung wartet
+let delS = null;   // Training, das auf Bestaetigung wartet
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) state = JSON.parse(raw);
+  } catch (e) { /* noch nichts gespeichert */ }
+  // Kader aus einer aelteren Version (nur Namen) uebernehmen
+  state.kader = (state.kader || []).map(k =>
+    typeof k === 'string' ? { name: k, standard: true } : k);
+  state.sessions = state.sessions || {};
+  if (state.autoBackup === undefined) state.autoBackup = true;
+  state.nds = Object.assign({ leiter: '', zeit: '20:00', dauer: '90', ort: 'Affoltern am Albis' }, state.nds || {});
+  state.meta = state.meta || {};
+  loaded = true;
+  render();
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); }
+  catch (e) { toast('Speichern fehlgeschlagen'); }
+}
+
+const heute = () => new Date().toISOString().slice(0, 10);
+const deDatum = iso => { const [y, m, d] = iso.split('-'); return `${d}.${m}.${y.slice(2)}`; };
+const namen = () => state.kader.map(k => k.name);
+const findK = n => state.kader.find(k => k.name === n);
+const SPIEL_DAUER = '90';
+const istSpiel = d => state.meta[d] && state.meta[d].typ === 'Spiel';
+// Zeit, Dauer, Ort eines Anlasses: Spiele haben eigene Werte, Trainings die Standardwerte
+const details = d => istSpiel(d) ? state.meta[d]
+  : Object.assign({ typ: 'Training', zeit: state.nds.zeit, dauer: state.nds.dauer, ort: state.nds.ort }, state.meta[d] || {});
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+
+function neuerDraft(datum) {
+  const alt = state.sessions[datum];
+  const m = state.meta[datum];
+  return {
+    datum,
+    typ: m && m.typ === 'Spiel' ? 'Spiel' : 'Training',
+    zeit: m && m.typ === 'Spiel' ? m.zeit : '',
+    dauer: m && m.typ === 'Spiel' ? m.dauer : SPIEL_DAUER,
+    ort: m && m.typ === 'Spiel' ? m.ort : '',
+    anwesend: Object.fromEntries(state.kader.map(k =>
+      [k.name, alt && (k.name in alt) ? !!alt[k.name] : k.standard]))
+  };
+}
+
+function render() {
+  if (!loaded) { app.innerHTML = '<div class="empty">Lädt…</div>'; return; }
+  app.innerHTML = `
+    <div class="top" role="tablist">
+      ${['erfassen', 'kader', 'übersicht'].map(t => `
+        <button class="tab" role="tab" data-tab="${t}" aria-selected="${tab === t}">
+          ${t[0].toUpperCase() + t.slice(1)}
+        </button>`).join('')}
+    </div>
+    <div id="body"></div>`;
+  app.querySelectorAll('.tab').forEach(b =>
+    b.onclick = () => { tab = b.dataset.tab; draft = null; delK = null; delS = null; render(); });
+
+  const body = app.querySelector('#body');
+  if (tab === 'kader') renderKader(body);
+  else if (tab === 'übersicht') renderUebersicht(body);
+  else renderErfassen(body);
+}
+
+function renderKader(el) {
+  el.innerHTML = `
+    <h2>Kader</h2>
+    <p class="note">Die J+S-Nummer braucht es nur für den NDS-Export. Zum Entfernen zweimal tippen. „Selten dabei“ heisst: die Person startet jedes Training auf abwesend und steht unten in einem eigenen Bereich.</p>
+    <div class="field">
+      <input type="text" id="nm" placeholder="Name" autocomplete="off">
+      <button class="add" id="ok">Hinzufügen</button>
+    </div>
+    ${state.kader.length === 0 ? `
+      <div class="empty">Noch keine Namen. Tipp sie oben ein — oder lies unter Übersicht ein Backup ein.</div>` :
+      state.kader.map((k, i) => `
+        <div class="kad">
+          <span class="nm">${esc(k.name)}${k.standard ? '' : '<small>startet auf abwesend</small>'}
+            <input type="text" class="nr" data-i="${i}" inputmode="numeric" placeholder="J+S-Nummer" value="${esc(k.nr || '')}" aria-label="J+S-Nummer von ${esc(k.name)}"></span>
+          <button class="flip ${k.standard ? '' : 'on'}" data-i="${i}">${k.standard ? 'meist dabei' : 'selten dabei'}</button>
+          ${delK === k.name
+            ? `<button class="flip on" data-i="${i}" data-go="1">wirklich löschen</button>`
+            : `<button class="del" data-i="${i}" aria-label="${esc(k.name)} entfernen">×</button>`}
+        </div>`).join('')}`;
+
+  const inp = el.querySelector('#nm');
+  const add = () => {
+    const v = inp.value.trim();
+    if (!v) return;
+    if (namen().includes(v)) { toast('Name gibt es schon'); return; }
+    state.kader.push({ name: v, standard: true });
+    state.kader.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    save();
+    render();
+    app.querySelector('#nm')?.focus();
+  };
+  el.querySelector('#ok').onclick = add;
+  inp.onkeydown = e => { if (e.key === 'Enter') add(); };
+
+  el.querySelectorAll('.nr').forEach(f => f.onchange = () => {
+    state.kader[+f.dataset.i].nr = f.value.replace(/\D/g, '');
+    save();
+    toast('Nummer gespeichert');
+  });
+  el.querySelectorAll('.flip:not([data-go])').forEach(b => b.onclick = () => {
+    const k = state.kader[+b.dataset.i];
+    k.standard = !k.standard;
+    save();
+    render();
+  });
+  el.querySelectorAll('.del, [data-go]').forEach(b => b.onclick = () => {
+    const i = +b.dataset.i;
+    if (!b.dataset.go) { delK = state.kader[i].name; render(); return; }
+    state.kader.splice(i, 1);
+    delK = null;
+    save();
+    render();
+    toast('Aus dem Kader entfernt');
+  });
+}
+
+function zeile(n, da) {
+  return `<button class="row ${da ? 'da' : 'weg'}" data-n="${esc(n)}" aria-pressed="${da}">
+    <span class="nm">${esc(n)}</span>
+    <span class="st">${da ? 'da' : 'gefehlt'}</span>
+  </button>`;
+}
+
+function renderErfassen(el) {
+  if (state.kader.length === 0) {
+    el.innerHTML = '<div class="empty">Leg zuerst den Kader an, dann kannst du hier erfassen.</div>';
+    return;
+  }
+  if (!draft) draft = neuerDraft(heute());
+
+  const haupt = state.kader.filter(k => k.standard);
+  const selten = state.kader.filter(k => !k.standard);
+  const da = Object.values(draft.anwesend).filter(Boolean).length;
+  const seltenDa = selten.filter(k => draft.anwesend[k.name]).length;
+
+  el.innerHTML = `
+    <div class="field"><input type="date" id="dt" value="${draft.datum}"></div>
+    <div class="typ">
+      <button data-typ="Training" aria-pressed="${draft.typ === 'Training'}">Training</button>
+      <button data-typ="Spiel" aria-pressed="${draft.typ === 'Spiel'}">Spiel</button>
+    </div>
+    ${draft.typ === 'Training'
+      ? `<p class="info">${esc(state.nds.zeit)} Uhr · ${esc(state.nds.dauer)} Min. · ${esc(state.nds.ort)}</p>`
+      : `<div class="spiel">
+          <div class="zwei">
+            <div><label for="sz">Anpfiff</label><input type="time" id="sz" value="${esc(draft.zeit)}"></div>
+            <div><label for="sd">Dauer (Min.)</label><input type="text" id="sd" inputmode="numeric" value="${esc(draft.dauer)}"></div>
+          </div>
+          <label for="so">Ort</label><input type="text" id="so" value="${esc(draft.ort)}" placeholder="z.B. Zürich">
+        </div>`}
+    <div class="head">
+      <h2>Wer war da?</h2>
+      <span class="count">${da} von ${state.kader.length}</span>
+    </div>
+    <p class="note">Tipp die an, die gefehlt haben.</p>
+    ${haupt.map(k => zeile(k.name, draft.anwesend[k.name])).join('')}
+    ${selten.length ? `
+      <details class="selten" ${seltenDa ? 'open' : ''}>
+        <summary>Selten dabei (${selten.length})${seltenDa ? ` — ${seltenDa} heute da` : ''}</summary>
+        ${selten.map(k => zeile(k.name, draft.anwesend[k.name])).join('')}
+      </details>` : ''}
+    <div class="bar">
+      <button class="btn" id="sp">${state.sessions[draft.datum] ? 'Änderungen speichern' : draft.typ + ' speichern'}</button>
+    </div>`;
+
+  el.querySelector('#dt').onchange = e => { draft = neuerDraft(e.target.value); render(); };
+  el.querySelectorAll('[data-typ]').forEach(b => b.onclick = () => { draft.typ = b.dataset.typ; render(); });
+  if (draft.typ === 'Spiel') {
+    el.querySelector('#sz').oninput = e => draft.zeit = e.target.value;
+    el.querySelector('#sd').oninput = e => draft.dauer = e.target.value.replace(/\D/g, '');
+    el.querySelector('#so').oninput = e => draft.ort = e.target.value;
+  }
+  el.querySelectorAll('.row').forEach(b => b.onclick = () => {
+    draft.anwesend[b.dataset.n] = !draft.anwesend[b.dataset.n];
+    render();
+  });
+  el.querySelector('#sp').onclick = () => {
+    if (draft.typ === 'Spiel' && (!draft.zeit || !draft.ort.trim() || !draft.dauer)) {
+      toast('Bei Spielen Anpfiff, Dauer und Ort ausfüllen');
+      return;
+    }
+    state.sessions[draft.datum] = { ...draft.anwesend };
+    if (draft.typ === 'Spiel') state.meta[draft.datum] = { typ: 'Spiel', zeit: draft.zeit, dauer: draft.dauer, ort: draft.ort.trim() };
+    else delete state.meta[draft.datum];
+    save();
+    const dat = draft.datum;
+    draft = null;
+    tab = 'übersicht';
+    render();
+    toast(`${deDatum(dat)} gespeichert`);
+    if (state.autoBackup) backup();
+  };
+}
+
+function renderUebersicht(el) {
+  const alle = Object.keys(state.sessions).sort();
+  const daten = alle.filter(d => !istSpiel(d));      // Statistik und Excel: nur Trainings
+  const spiele = alle.length - daten.length;
+  if (alle.length === 0) {
+    el.innerHTML = '<div class="empty">Noch keine Trainings erfasst.</div>' + sicherungHtml(false);
+    bindeSicherung(el);
+    return;
+  }
+  const zeilen = state.kader.map(k => {
+    const anz = daten.filter(d => state.sessions[d][k.name]).length;
+    const mgl = daten.filter(d => k.name in state.sessions[d]).length;
+    return { n: k.name, anz, mgl, pct: mgl ? Math.round(anz / mgl * 100) : 0 };
+  }).sort((a, b) => b.pct - a.pct || a.n.localeCompare(b.n, 'de'));
+
+  el.innerHTML = `
+    <div class="head">
+      <h2>Beteiligung</h2>
+      <span class="count">${daten.length} Training${daten.length === 1 ? '' : 's'}${spiele ? ` · ${spiele} Spiel${spiele === 1 ? '' : 'e'}` : ''}</span>
+    </div>
+    <table>
+      <thead><tr><th>Spieler</th><th class="num">Da</th><th class="num">Quote</th></tr></thead>
+      <tbody>${zeilen.map(r => `<tr>
+        <td>${esc(r.n)}</td>
+        <td class="num">${r.anz}/${r.mgl}</td>
+        <td class="num quote">${r.pct}%</td>
+      </tr>`).join('')}</tbody>
+    </table>
+
+    <p class="note" style="margin-top:8px">Quote zählt nur Trainings.</p>
+
+    <h2 style="margin-top:28px">Erfasst</h2>
+    ${alle.slice().reverse().map(d => {
+      const s = state.sessions[d];
+      return `<div class="sess">
+        <span class="d">${deDatum(d)}${istSpiel(d) ? `<span class="tag">Spiel</span>` : ''}</span>
+        <span class="s">${Object.values(s).filter(Boolean).length} von ${Object.keys(s).length} da${istSpiel(d) ? ` · ${esc(state.meta[d].ort)}` : ''}</span>
+        ${delS === d
+          ? `<button class="flip on" data-d="${d}" data-go="1">wirklich löschen</button>`
+          : `<button class="del" data-d="${d}" aria-label="${deDatum(d)} löschen">×</button>`}
+      </div>`;
+    }).join('')}
+
+    ${ndsHtml(alle)}
+    ${sicherungHtml(true)}`;
+
+  el.querySelectorAll('.del, [data-go]').forEach(b => b.onclick = () => {
+    const d = b.dataset.d;
+    if (!b.dataset.go) { delS = d; render(); return; }
+    delete state.sessions[d];
+    delete state.meta[d];
+    delS = null;
+    save();
+    render();
+    toast('Training gelöscht');
+  });
+  bindeSicherung(el);
+  el.querySelector('#csv').onclick = () => exportCsv(daten);
+  el.querySelector('#xlsx').onclick = () => exportXlsx(daten);
+  bindeNds(el, alle);
+}
+
+function sicherungHtml(mitCsv) {
+  return `
+    <h2 style="margin-top:28px">Sicherung</h2>
+    <p class="note">Das Backup enthält Kader und alle Trainings und lässt sich hier wieder einlesen. Die Excel-Tabelle ist zum Anschauen und für J+S.</p>
+    <label class="kad" style="cursor:pointer">
+      <input type="checkbox" id="ab" ${state.autoBackup ? 'checked' : ''} style="width:20px;height:20px">
+      <span class="nm">Nach jedem Training zum Sichern anbieten</span>
+    </label>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn ghost" id="bk">Backup jetzt</button>
+      <button class="btn ghost" id="rs">Backup einlesen</button>
+    </div>
+    <button class="btn ghost" id="tx" style="margin-top:8px">Backup als Text anzeigen</button>
+    <input type="file" id="fi" accept="application/json,.json" style="display:none">
+    ${mitCsv ? `<div style="margin-top:24px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn" id="xlsx">Tabelle als Excel herunterladen</button>
+      <button class="btn ghost" id="csv">Tabelle als CSV herunterladen</button>
+    </div>` : ''}`;
+}
+
+function bindeSicherung(el) {
+  el.querySelector('#bk').onclick = () => backup();
+  el.querySelector('#ab').onchange = e => { state.autoBackup = e.target.checked; save(); };
+  el.querySelector('#tx').onclick = () => zeigeText(JSON.stringify(
+    { app: 'anwesenheit', version: 1, erstellt: new Date().toISOString(), daten: state }, null, 2));
+  const fi = el.querySelector('#fi');
+  el.querySelector('#rs').onclick = () => fi.click();
+  fi.onchange = () => { if (fi.files[0]) einlesen(fi.files[0]); };
+}
+
+function ladeRunter(text, name, typ) {
+  const url = URL.createObjectURL(text instanceof Blob ? text : new Blob([text], { type: typ }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function backup() {
+  const paket = { app: 'anwesenheit', version: 1, erstellt: new Date().toISOString(), daten: state };
+  const text = JSON.stringify(paket, null, 2);
+  const j = new Date();
+  const z = n => String(n).padStart(2, '0');
+  const stempel = `${j.getFullYear()}-${z(j.getMonth() + 1)}-${z(j.getDate())}-${z(j.getHours())}${z(j.getMinutes())}`;
+  const name = `anwesenheit-backup-${stempel}.json`;
+
+  // 1. Teilen-Menue: funktioniert auch, wenn die App vom Homescreen laeuft
+  try {
+    const datei = new File([text], name, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [datei] })) {
+      await navigator.share({ files: [datei], title: name });
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;   // Nutzer hat abgebrochen
+  }
+
+  // 2. Normaler Download im Browser
+  try {
+    ladeRunter(text, name, 'application/json');
+    toast('Backup gespeichert');
+    return;
+  } catch (e) { /* faellt durch */ }
+
+  // 3. Notfall: Text zum Kopieren anzeigen
+  zeigeText(text);
+}
+
+function zeigeText(text) {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;background:#f7f7f5;padding:16px;z-index:99;display:flex;flex-direction:column;gap:12px';
+  box.innerHTML = `
+    <p class="note" style="margin:0">Speichern hat nicht geklappt. Kopier den Text und sichere ihn als Datei.</p>
+    <textarea readonly style="flex:1;font-family:monospace;font-size:12px;padding:10px;border:1px solid var(--line);border-radius:6px">${esc(text)}</textarea>
+    <button class="btn" id="kop">Kopieren</button>
+    <button class="btn ghost" id="zu">Schliessen</button>`;
+  document.body.appendChild(box);
+  box.querySelector('#kop').onclick = async () => {
+    try { await navigator.clipboard.writeText(text); toast('Kopiert'); }
+    catch (e) { box.querySelector('textarea').select(); }
+  };
+  box.querySelector('#zu').onclick = () => box.remove();
+}
+
+function einlesen(datei) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const p = JSON.parse(r.result);
+      if (p.app === 'anwesenheit-nummern') { nummernEinlesen(p); return; }
+      const d = p.daten || p;
+      if (!d.kader || !d.sessions) throw new Error('Format');
+      state = d;
+      state.kader = state.kader.map(k => typeof k === 'string' ? { name: k, standard: true } : k);
+      if (state.autoBackup === undefined) state.autoBackup = true;
+      state.nds = Object.assign({ leiter: '', zeit: '20:00', dauer: '90', ort: 'Affoltern am Albis' }, state.nds || {});
+      state.meta = state.meta || {};
+      save();
+      tab = 'übersicht';
+      render();
+      toast(`${Object.keys(state.sessions).length} Trainings geladen`);
+    } catch (e) {
+      toast('Datei passt nicht — kein Backup dieser App?');
+    }
+  };
+  r.onerror = () => toast('Datei konnte nicht gelesen werden');
+  r.readAsText(datei);
+}
+
+function exportCsv(daten) {
+  const q = v => `"${String(v).replace(/"/g, '""')}"`;
+  const kopf = ['Spieler', ...daten.map(deDatum), 'Anwesend', 'Möglich', 'Quote'];
+  const zeilen = state.kader.map(k => {
+    const zellen = daten.map(d => (k.name in state.sessions[d]) ? (state.sessions[d][k.name] ? 'X' : '-') : '');
+    const anz = daten.filter(d => state.sessions[d][k.name]).length;
+    const mgl = daten.filter(d => k.name in state.sessions[d]).length;
+    return [k.name, ...zellen, anz, mgl, mgl ? Math.round(anz / mgl * 100) + '%' : ''];
+  });
+  const csv = '\uFEFF' + [kopf, ...zeilen].map(r => r.map(q).join(';')).join('\r\n');
+  ladeRunter(csv, `anwesenheit-${heute()}.csv`, 'text/csv;charset=utf-8');
+  toast('CSV heruntergeladen');
+}
+
+// ---------- Excel-Export (.xlsx ohne externe Bibliothek) ----------
+// Eine .xlsx ist ein ZIP mit ein paar XML-Dateien. Wir bauen das ZIP
+// unkomprimiert ("stored") selbst zusammen.
+
+const CRC_TAB = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(b) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < b.length; i++) c = CRC_TAB[(c ^ b[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function baueZip(dateien) {            // dateien: [{name, text}]
+  const enc = new TextEncoder();
+  const teile = [], verzeichnis = [];
+  let pos = 0;
+  for (const f of dateien) {
+    const name = enc.encode(f.name), daten = enc.encode(f.text);
+    const crc = crc32(daten);
+    const kopf = new DataView(new ArrayBuffer(30));
+    kopf.setUint32(0, 0x04034b50, true);
+    kopf.setUint16(4, 20, true);
+    kopf.setUint16(6, 0x0800, true);   // UTF-8 Dateinamen
+    kopf.setUint16(8, 0, true);        // keine Kompression
+    kopf.setUint32(14, crc, true);
+    kopf.setUint32(18, daten.length, true);
+    kopf.setUint32(22, daten.length, true);
+    kopf.setUint16(26, name.length, true);
+    teile.push(new Uint8Array(kopf.buffer), name, daten);
+
+    const z = new DataView(new ArrayBuffer(46));
+    z.setUint32(0, 0x02014b50, true);
+    z.setUint16(4, 20, true);
+    z.setUint16(6, 20, true);
+    z.setUint16(8, 0x0800, true);
+    z.setUint32(16, crc, true);
+    z.setUint32(20, daten.length, true);
+    z.setUint32(24, daten.length, true);
+    z.setUint16(28, name.length, true);
+    z.setUint32(42, pos, true);
+    verzeichnis.push(new Uint8Array(z.buffer), name);
+
+    pos += 30 + name.length + daten.length;
+  }
+  const vzLaenge = verzeichnis.reduce((s, a) => s + a.length, 0);
+  const ende = new DataView(new ArrayBuffer(22));
+  ende.setUint32(0, 0x06054b50, true);
+  ende.setUint16(8, dateien.length, true);
+  ende.setUint16(10, dateien.length, true);
+  ende.setUint32(12, vzLaenge, true);
+  ende.setUint32(16, pos, true);
+  return new Blob([...teile, ...verzeichnis, new Uint8Array(ende.buffer)],
+    { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+function spalte(i) {                   // 0 -> A, 26 -> AA
+  let s = '';
+  for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s;
+  return s;
+}
+
+function exportXlsx(daten) {
+  const x = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // Stile: 1 = Kopf fett, 2 = zentriert, 3 = anwesend (grün), 4 = Prozent, 5 = Kopf fett zentriert
+  const txt = (r, c, v, st = 0) => `<c r="${spalte(c)}${r}" t="inlineStr"${st ? ` s="${st}"` : ''}><is><t>${x(v)}</t></is></c>`;
+  const zahl = (r, c, v, st = 0) => `<c r="${spalte(c)}${r}"${st ? ` s="${st}"` : ''}><v>${v}</v></c>`;
+
+  const n = daten.length;
+  const zeilen = [];
+  const kopf = [txt(1, 0, 'Spieler', 1)];
+  daten.forEach((d, i) => kopf.push(txt(1, i + 1, deDatum(d), 5)));
+  ['Anwesend', 'Möglich', 'Quote'].forEach((t, i) => kopf.push(txt(1, n + 1 + i, t, 5)));
+  zeilen.push(`<row r="1">${kopf.join('')}</row>`);
+
+  state.kader.forEach((k, zi) => {
+    const r = zi + 2;
+    const z = [txt(r, 0, k.name)];
+    daten.forEach((d, i) => {
+      if (k.name in state.sessions[d]) {
+        const da = state.sessions[d][k.name];
+        z.push(txt(r, i + 1, da ? 'X' : '-', da ? 3 : 2));
+      }
+    });
+    const anz = daten.filter(d => state.sessions[d][k.name]).length;
+    const mgl = daten.filter(d => k.name in state.sessions[d]).length;
+    z.push(zahl(r, n + 1, anz, 2), zahl(r, n + 2, mgl, 2));
+    if (mgl) z.push(zahl(r, n + 3, anz / mgl, 4));
+    zeilen.push(`<row r="${r}">${z.join('')}</row>`);
+  });
+
+  const breiten = `<cols><col min="1" max="1" width="22" customWidth="1"/>` +
+    (n ? `<col min="2" max="${n + 1}" width="10" customWidth="1"/>` : '') +
+    `<col min="${n + 2}" max="${n + 4}" width="11" customWidth="1"/></cols>`;
+
+  const blatt = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetViews><sheetView workbookViewId="0"><pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>
+${breiten}<sheetData>${zeilen.join('')}</sheetData></worksheet>`;
+
+  const stile = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFD9F2D9"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="6">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="9" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+  const blob = baueZip([
+    { name: '[Content_Types].xml', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>` },
+    { name: '_rels/.rels', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>` },
+    { name: 'xl/workbook.xml', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Anwesenheit" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+    { name: 'xl/_rels/workbook.xml.rels', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>` },
+    { name: 'xl/worksheets/sheet1.xml', text: blatt },
+    { name: 'xl/styles.xml', text: stile },
+  ]);
+
+  gibDatei(blob, `anwesenheit-${heute()}.xlsx`, 'Excel-Tabelle heruntergeladen');
+}
+
+// ---------- NDS-Export (J+S Nationale Datenbank Sport) ----------
+let ndsVon = null, ndsBis = null;
+
+function ndsHtml(daten) {
+  const n = state.nds;
+  const von = ndsVon || daten[0], bis = ndsBis || daten[daten.length - 1];
+  const imBereich = daten.filter(d => d >= von && d <= bis);
+  const ohneNr = state.kader.filter(k => !k.nr && imBereich.some(d => state.sessions[d][k.name]))
+    .map(k => k.name);
+  return `
+    <h2 style="margin-top:28px">J+S / NDS</h2>
+    <p class="note">Erzeugt die Datei zum Hochladen in der NDS: eine Zeile pro anwesender Person und Anlass (Trainings und Spiele), Leiter jeweils dabei.</p>
+    <div class="nds">
+      <label for="nl">J+S-Nummer Leiter (mehrere mit Komma trennen)</label>
+      <input type="text" id="nl" inputmode="numeric" value="${esc(n.leiter)}" placeholder="z.B. 131735">
+      <div class="zwei">
+        <div><label for="nz">Training: Startzeit</label><input type="text" id="nz" value="${esc(n.zeit)}"></div>
+        <div><label for="nd">Training: Dauer (Min.)</label><input type="text" id="nd" inputmode="numeric" value="${esc(n.dauer)}"></div>
+      </div>
+      <label for="no">Training: Ort</label>
+      <input type="text" id="no" value="${esc(n.ort)}">
+      <div class="zwei">
+        <div><label for="nv">Von</label><input type="date" id="nv" value="${von}"></div>
+        <div><label for="nb">Bis</label><input type="date" id="nb" value="${bis}"></div>
+      </div>
+    </div>
+    ${!n.leiter.trim() ? '<p class="warn">Noch keine Leiter-Nummer eingetragen.</p>' : ''}
+    ${ohneNr.length ? `<p class="warn">Ohne J+S-Nummer (werden weggelassen): ${ohneNr.map(esc).join(', ')}</p>` : ''}
+    <button class="btn" id="ndsx" style="margin-top:14px">NDS-Datei herunterladen (${imBereich.length} Anlass${imBereich.length === 1 ? '' : 'e'})</button>`;
+}
+
+function bindeNds(el, daten) {
+  const feld = (id, key) => el.querySelector(id).onchange = e => {
+    state.nds[key] = e.target.value.trim(); save(); render();
+  };
+  feld('#nl', 'leiter'); feld('#nz', 'zeit'); feld('#nd', 'dauer'); feld('#no', 'ort');
+  el.querySelector('#nv').onchange = e => { ndsVon = e.target.value; render(); };
+  el.querySelector('#nb').onchange = e => { ndsBis = e.target.value; render(); };
+  el.querySelector('#ndsx').onclick = () => exportNds(daten);
+}
+
+function exportNds(daten) {
+  const n = state.nds;
+  const von = ndsVon || daten[0], bis = ndsBis || daten[daten.length - 1];
+  const leiter = n.leiter.split(/[,; ]+/).map(x => x.replace(/\D/g, '')).filter(Boolean);
+  const zeilen = ['PERSONENNUMMER;FUNKTION;DATUM;AKTIVITAETSTYP;ZEIT;DAUER;ORT'];
+  let anzahl = 0;
+  for (const d of daten.filter(d => d >= von && d <= bis)) {
+    const [y, m, t] = d.split('-');
+    const datum = `${t}.${m}.${y}`;
+    const schon = new Set();
+    const a = details(d);
+    const typ = a.typ === 'Spiel' ? 'Wettkampf' : 'Training';
+    const aOrt = String(a.ort || '').replace(/;/g, ',');
+    const neu = (nr, fn) => {
+      if (schon.has(nr)) return;
+      schon.add(nr);
+      zeilen.push([nr, fn, datum, typ, a.zeit, a.dauer, aOrt].join(';'));
+      anzahl++;
+    };
+    leiter.forEach(nr => neu(nr, 'Leiter'));
+    state.kader.forEach(k => { if (k.nr && state.sessions[d][k.name]) neu(k.nr, 'Teilnehmer'); });
+  }
+  if (anzahl === 0) { toast('Nichts zu exportieren'); return; }
+  const text = '﻿' + zeilen.join('\r\n') + '\r\n';
+  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+  gibDatei(blob, `nds-anwesenheit-${von}-bis-${bis}.csv`, `NDS-Datei mit ${anzahl} Zeilen`);
+}
+
+function nummernEinlesen(p) {
+  let treffer = 0;
+  for (const k of state.kader) {
+    const nr = p.nummern && p.nummern[k.name];
+    if (nr && !k.nr) { k.nr = String(nr); treffer++; }
+  }
+  if (p.leiter && !state.nds.leiter) state.nds.leiter = String(p.leiter);
+  save();
+  tab = 'kader';
+  render();
+  toast(`${treffer} J+S-Nummern übernommen`);
+}
+
+// Datei weitergeben: am Handy über Teilen-Menü, sonst normaler Download
+async function gibDatei(blob, name, meldung) {
+  try {
+    const datei = new File([blob], name, { type: blob.type });
+    const mobil = matchMedia('(display-mode: standalone)').matches;
+    if (mobil && navigator.canShare && navigator.canShare({ files: [datei] })) {
+      await navigator.share({ files: [datei], title: name });
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+  }
+  ladeRunter(blob, name, blob.type);
+  toast(meldung);
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+load();
+</script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
