@@ -347,12 +347,13 @@ function renderUebersicht(el) {
   });
   bindeSicherung(el);
   el.querySelector('#csv').onclick = () => exportCsv(daten);
+  el.querySelector('#xlsx').onclick = () => exportXlsx(daten);
 }
 
 function sicherungHtml(mitCsv) {
   return `
     <h2 style="margin-top:28px">Sicherung</h2>
-    <p class="note">Das Backup enthält Kader und alle Trainings und lässt sich hier wieder einlesen. Die CSV ist zum Anschauen und für J+S.</p>
+    <p class="note">Das Backup enthält Kader und alle Trainings und lässt sich hier wieder einlesen. Die Excel-Tabelle ist zum Anschauen und für J+S.</p>
     <label class="kad" style="cursor:pointer">
       <input type="checkbox" id="ab" ${state.autoBackup ? 'checked' : ''} style="width:20px;height:20px">
       <span class="nm">Nach jedem Training zum Sichern anbieten</span>
@@ -363,7 +364,8 @@ function sicherungHtml(mitCsv) {
     </div>
     <button class="btn ghost" id="tx" style="margin-top:8px">Backup als Text anzeigen</button>
     <input type="file" id="fi" accept="application/json,.json" style="display:none">
-    ${mitCsv ? `<div class="bar" style="margin-top:24px">
+    ${mitCsv ? `<div class="bar" style="margin-top:24px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn" id="xlsx">Tabelle als Excel herunterladen</button>
       <button class="btn ghost" id="csv">Tabelle als CSV herunterladen</button>
     </div>` : ''}`;
 }
@@ -379,7 +381,7 @@ function bindeSicherung(el) {
 }
 
 function ladeRunter(text, name, typ) {
-  const url = URL.createObjectURL(new Blob([text], { type: typ }));
+  const url = URL.createObjectURL(text instanceof Blob ? text : new Blob([text], { type: typ }));
   const a = document.createElement('a');
   a.href = url;
   a.download = name;
@@ -467,6 +469,160 @@ function exportCsv(daten) {
   const csv = '\uFEFF' + [kopf, ...zeilen].map(r => r.map(q).join(';')).join('\r\n');
   ladeRunter(csv, `anwesenheit-${heute()}.csv`, 'text/csv;charset=utf-8');
   toast('CSV heruntergeladen');
+}
+
+// ---------- Excel-Export (.xlsx ohne externe Bibliothek) ----------
+// Eine .xlsx ist ein ZIP mit ein paar XML-Dateien. Wir bauen das ZIP
+// unkomprimiert ("stored") selbst zusammen.
+
+const CRC_TAB = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(b) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < b.length; i++) c = CRC_TAB[(c ^ b[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function baueZip(dateien) {            // dateien: [{name, text}]
+  const enc = new TextEncoder();
+  const teile = [], verzeichnis = [];
+  let pos = 0;
+  for (const f of dateien) {
+    const name = enc.encode(f.name), daten = enc.encode(f.text);
+    const crc = crc32(daten);
+    const kopf = new DataView(new ArrayBuffer(30));
+    kopf.setUint32(0, 0x04034b50, true);
+    kopf.setUint16(4, 20, true);
+    kopf.setUint16(6, 0x0800, true);   // UTF-8 Dateinamen
+    kopf.setUint16(8, 0, true);        // keine Kompression
+    kopf.setUint32(14, crc, true);
+    kopf.setUint32(18, daten.length, true);
+    kopf.setUint32(22, daten.length, true);
+    kopf.setUint16(26, name.length, true);
+    teile.push(new Uint8Array(kopf.buffer), name, daten);
+
+    const z = new DataView(new ArrayBuffer(46));
+    z.setUint32(0, 0x02014b50, true);
+    z.setUint16(4, 20, true);
+    z.setUint16(6, 20, true);
+    z.setUint16(8, 0x0800, true);
+    z.setUint32(16, crc, true);
+    z.setUint32(20, daten.length, true);
+    z.setUint32(24, daten.length, true);
+    z.setUint16(28, name.length, true);
+    z.setUint32(42, pos, true);
+    verzeichnis.push(new Uint8Array(z.buffer), name);
+
+    pos += 30 + name.length + daten.length;
+  }
+  const vzLaenge = verzeichnis.reduce((s, a) => s + a.length, 0);
+  const ende = new DataView(new ArrayBuffer(22));
+  ende.setUint32(0, 0x06054b50, true);
+  ende.setUint16(8, dateien.length, true);
+  ende.setUint16(10, dateien.length, true);
+  ende.setUint32(12, vzLaenge, true);
+  ende.setUint32(16, pos, true);
+  return new Blob([...teile, ...verzeichnis, new Uint8Array(ende.buffer)],
+    { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+function spalte(i) {                   // 0 -> A, 26 -> AA
+  let s = '';
+  for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s;
+  return s;
+}
+
+function exportXlsx(daten) {
+  const x = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // Stile: 1 = Kopf fett, 2 = zentriert, 3 = anwesend (grün), 4 = Prozent, 5 = Kopf fett zentriert
+  const txt = (r, c, v, st = 0) => `<c r="${spalte(c)}${r}" t="inlineStr"${st ? ` s="${st}"` : ''}><is><t>${x(v)}</t></is></c>`;
+  const zahl = (r, c, v, st = 0) => `<c r="${spalte(c)}${r}"${st ? ` s="${st}"` : ''}><v>${v}</v></c>`;
+
+  const n = daten.length;
+  const zeilen = [];
+  const kopf = [txt(1, 0, 'Spieler', 1)];
+  daten.forEach((d, i) => kopf.push(txt(1, i + 1, deDatum(d), 5)));
+  ['Anwesend', 'Möglich', 'Quote'].forEach((t, i) => kopf.push(txt(1, n + 1 + i, t, 5)));
+  zeilen.push(`<row r="1">${kopf.join('')}</row>`);
+
+  state.kader.forEach((k, zi) => {
+    const r = zi + 2;
+    const z = [txt(r, 0, k.name)];
+    daten.forEach((d, i) => {
+      if (k.name in state.sessions[d]) {
+        const da = state.sessions[d][k.name];
+        z.push(txt(r, i + 1, da ? 'X' : '-', da ? 3 : 2));
+      }
+    });
+    const anz = daten.filter(d => state.sessions[d][k.name]).length;
+    const mgl = daten.filter(d => k.name in state.sessions[d]).length;
+    z.push(zahl(r, n + 1, anz, 2), zahl(r, n + 2, mgl, 2));
+    if (mgl) z.push(zahl(r, n + 3, anz / mgl, 4));
+    zeilen.push(`<row r="${r}">${z.join('')}</row>`);
+  });
+
+  const breiten = `<cols><col min="1" max="1" width="22" customWidth="1"/>` +
+    (n ? `<col min="2" max="${n + 1}" width="10" customWidth="1"/>` : '') +
+    `<col min="${n + 2}" max="${n + 4}" width="11" customWidth="1"/></cols>`;
+
+  const blatt = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetViews><sheetView workbookViewId="0"><pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>
+${breiten}<sheetData>${zeilen.join('')}</sheetData></worksheet>`;
+
+  const stile = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFD9F2D9"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="6">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="9" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+  const blob = baueZip([
+    { name: '[Content_Types].xml', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>` },
+    { name: '_rels/.rels', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>` },
+    { name: 'xl/workbook.xml', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Anwesenheit" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+    { name: 'xl/_rels/workbook.xml.rels', text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>` },
+    { name: 'xl/worksheets/sheet1.xml', text: blatt },
+    { name: 'xl/styles.xml', text: stile },
+  ]);
+
+  ladeRunter(blob, `anwesenheit-${heute()}.xlsx`, blob.type);
+  toast('Excel-Tabelle heruntergeladen');
 }
 
 function esc(s) {
