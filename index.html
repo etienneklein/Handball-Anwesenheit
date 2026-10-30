@@ -148,6 +148,7 @@ let draft = null;
 let loaded = false;
 let delK = null;   // Kader-Eintrag, der auf Bestaetigung wartet
 let delS = null;   // Training, das auf Bestaetigung wartet
+let delL = null;   // Leiter, der auf Bestaetigung wartet
 
 function load() {
   try {
@@ -159,8 +160,9 @@ function load() {
     typeof k === 'string' ? { name: k, standard: true } : k);
   state.sessions = state.sessions || {};
   if (state.autoBackup === undefined) state.autoBackup = true;
-  state.nds = Object.assign({ leiter: '', zeit: '20:00', dauer: '90', ort: 'Affoltern am Albis' }, state.nds || {});
+  state.nds = Object.assign({ zeit: '20:00', dauer: '90', ort: 'Affoltern am Albis' }, state.nds || {});
   state.meta = state.meta || {};
+  pruefeLeiter();
   loaded = true;
   render();
 }
@@ -174,6 +176,15 @@ const deDatum = iso => { const [y, m, d] = iso.split('-'); return `${d}.${m}.${y
 const namen = () => state.kader.map(k => k.name);
 const findK = n => state.kader.find(k => k.name === n);
 const SPIEL_DAUER = '90';
+// Leiterliste aufbauen; alte Version hatte nur Nummern als Text in state.nds.leiter
+function pruefeLeiter() {
+  if (!Array.isArray(state.leiter)) {
+    const alt = String((state.nds && state.nds.leiter) || '').split(/[,; ]+/).map(x => x.replace(/\D/g, '')).filter(Boolean);
+    state.leiter = alt.map((nr, i) => ({ name: alt.length > 1 ? `Leiter ${i + 1}` : 'Leiter', nr }));
+  }
+  if (state.nds) delete state.nds.leiter;
+  state.leiterDa = state.leiterDa || {};
+}
 const istSpiel = d => state.meta[d] && state.meta[d].typ === 'Spiel';
 // Zeit, Dauer, Ort eines Anlasses: Spiele haben eigene Werte, Trainings die Standardwerte
 const details = d => istSpiel(d) ? state.meta[d]
@@ -196,6 +207,8 @@ function neuerDraft(datum) {
     zeit: m && m.typ === 'Spiel' ? m.zeit : '',
     dauer: m && m.typ === 'Spiel' ? m.dauer : SPIEL_DAUER,
     ort: m && m.typ === 'Spiel' ? m.ort : '',
+    leiter: Object.fromEntries(state.leiter.map(l =>
+      [l.name, state.leiterDa[datum] && (l.name in state.leiterDa[datum]) ? !!state.leiterDa[datum][l.name] : true])),
     anwesend: Object.fromEntries(state.kader.map(k =>
       [k.name, alt && (k.name in alt) ? !!alt[k.name] : k.standard]))
   };
@@ -212,7 +225,7 @@ function render() {
     </div>
     <div id="body"></div>`;
   app.querySelectorAll('.tab').forEach(b =>
-    b.onclick = () => { tab = b.dataset.tab; draft = null; delK = null; delS = null; render(); });
+    b.onclick = () => { tab = b.dataset.tab; draft = null; delK = null; delS = null; delL = null; render(); });
 
   const body = app.querySelector('#body');
   if (tab === 'kader') renderKader(body);
@@ -240,6 +253,48 @@ function renderKader(el) {
             : `<button class="del" data-i="${i}" aria-label="${esc(k.name)} entfernen">×</button>`}
         </div>`).join('')}`;
 
+  el.insertAdjacentHTML('beforeend', `
+    <h2 style="margin-top:32px">Leiter</h2>
+    <p class="note">Beim Erfassen wählst du an, welche Leiter da waren. Die Nummer braucht es für die NDS.</p>
+    <div class="field">
+      <input type="text" id="ln" placeholder="Name Leiter" autocomplete="off">
+      <button class="add" id="lok">Hinzufügen</button>
+    </div>
+    ${state.leiter.map((l, i) => `
+      <div class="kad">
+        <span class="nm">${esc(l.name)}
+          <input type="text" class="nr" data-li="${i}" inputmode="numeric" placeholder="J+S-Nummer" value="${esc(l.nr || '')}" aria-label="J+S-Nummer von ${esc(l.name)}"></span>
+        ${delL === l.name
+          ? `<button class="flip on" data-li="${i}" data-lgo="1">wirklich löschen</button>`
+          : `<button class="del" data-li="${i}" data-ldel="1" aria-label="${esc(l.name)} entfernen">×</button>`}
+      </div>`).join('')}`);
+
+  const lin = el.querySelector('#ln');
+  const ladd = () => {
+    const v = lin.value.trim();
+    if (!v) return;
+    if (state.leiter.some(l => l.name === v)) { toast('Leiter gibt es schon'); return; }
+    state.leiter.push({ name: v, nr: '' });
+    save();
+    render();
+  };
+  el.querySelector('#lok').onclick = ladd;
+  lin.onkeydown = e => { if (e.key === 'Enter') ladd(); };
+  el.querySelectorAll('.nr[data-li]').forEach(f => f.onchange = () => {
+    state.leiter[+f.dataset.li].nr = f.value.replace(/\D/g, '');
+    save();
+    toast('Nummer gespeichert');
+  });
+  el.querySelectorAll('[data-ldel], [data-lgo]').forEach(b => b.onclick = () => {
+    const i = +b.dataset.li;
+    if (!b.dataset.lgo) { delL = state.leiter[i].name; render(); return; }
+    state.leiter.splice(i, 1);
+    delL = null;
+    save();
+    render();
+    toast('Leiter entfernt');
+  });
+
   const inp = el.querySelector('#nm');
   const add = () => {
     const v = inp.value.trim();
@@ -254,18 +309,18 @@ function renderKader(el) {
   el.querySelector('#ok').onclick = add;
   inp.onkeydown = e => { if (e.key === 'Enter') add(); };
 
-  el.querySelectorAll('.nr').forEach(f => f.onchange = () => {
+  el.querySelectorAll('.nr[data-i]').forEach(f => f.onchange = () => {
     state.kader[+f.dataset.i].nr = f.value.replace(/\D/g, '');
     save();
     toast('Nummer gespeichert');
   });
-  el.querySelectorAll('.flip:not([data-go])').forEach(b => b.onclick = () => {
+  el.querySelectorAll('.flip[data-i]:not([data-go])').forEach(b => b.onclick = () => {
     const k = state.kader[+b.dataset.i];
     k.standard = !k.standard;
     save();
     render();
   });
-  el.querySelectorAll('.del, [data-go]').forEach(b => b.onclick = () => {
+  el.querySelectorAll('.del[data-i], [data-go][data-i]').forEach(b => b.onclick = () => {
     const i = +b.dataset.i;
     if (!b.dataset.go) { delK = state.kader[i].name; render(); return; }
     state.kader.splice(i, 1);
@@ -321,6 +376,9 @@ function renderErfassen(el) {
         <summary>Selten dabei (${selten.length})${seltenDa ? ` — ${seltenDa} heute da` : ''}</summary>
         ${selten.map(k => zeile(k.name, draft.anwesend[k.name])).join('')}
       </details>` : ''}
+    ${state.leiter.length ? `
+      <h2 style="margin-top:24px">Leiter</h2>
+      ${state.leiter.map(l => zeile(l.name, draft.leiter[l.name]).replace('class="row', 'data-l="1" class="row')).join('')}` : ''}
     <div class="bar">
       <button class="btn" id="sp">${state.sessions[draft.datum] ? 'Änderungen speichern' : draft.typ + ' speichern'}</button>
     </div>`;
@@ -333,7 +391,8 @@ function renderErfassen(el) {
     el.querySelector('#so').oninput = e => draft.ort = e.target.value;
   }
   el.querySelectorAll('.row').forEach(b => b.onclick = () => {
-    draft.anwesend[b.dataset.n] = !draft.anwesend[b.dataset.n];
+    const ziel = b.dataset.l ? draft.leiter : draft.anwesend;
+    ziel[b.dataset.n] = !ziel[b.dataset.n];
     render();
   });
   el.querySelector('#sp').onclick = () => {
@@ -342,6 +401,7 @@ function renderErfassen(el) {
       return;
     }
     state.sessions[draft.datum] = { ...draft.anwesend };
+    state.leiterDa[draft.datum] = { ...draft.leiter };
     if (draft.typ === 'Spiel') state.meta[draft.datum] = { typ: 'Spiel', zeit: draft.zeit, dauer: draft.dauer, ort: draft.ort.trim() };
     else delete state.meta[draft.datum];
     save();
@@ -405,6 +465,7 @@ function renderUebersicht(el) {
     if (!b.dataset.go) { delS = d; render(); return; }
     delete state.sessions[d];
     delete state.meta[d];
+    delete state.leiterDa[d];
     delS = null;
     save();
     render();
@@ -512,8 +573,9 @@ function einlesen(datei) {
       state = d;
       state.kader = state.kader.map(k => typeof k === 'string' ? { name: k, standard: true } : k);
       if (state.autoBackup === undefined) state.autoBackup = true;
-      state.nds = Object.assign({ leiter: '', zeit: '20:00', dauer: '90', ort: 'Affoltern am Albis' }, state.nds || {});
+      state.nds = Object.assign({ zeit: '20:00', dauer: '90', ort: 'Affoltern am Albis' }, state.nds || {});
       state.meta = state.meta || {};
+      pruefeLeiter();
       save();
       tab = 'übersicht';
       render();
@@ -701,13 +763,12 @@ function ndsHtml(daten) {
   const von = ndsVon || daten[0], bis = ndsBis || daten[daten.length - 1];
   const imBereich = daten.filter(d => d >= von && d <= bis);
   const ohneNr = state.kader.filter(k => !k.nr && imBereich.some(d => state.sessions[d][k.name]))
-    .map(k => k.name);
+    .map(k => k.name)
+    .concat(state.leiter.filter(l => !l.nr && imBereich.some(d => leiterWarDa(l, d))).map(l => l.name));
   return `
     <h2 style="margin-top:28px">J+S / NDS</h2>
     <p class="note">Erzeugt die Datei zum Hochladen in der NDS: eine Zeile pro anwesender Person und Anlass (Trainings und Spiele), Leiter jeweils dabei.</p>
     <div class="nds">
-      <label for="nl">J+S-Nummer Leiter (mehrere mit Komma trennen)</label>
-      <input type="text" id="nl" inputmode="numeric" value="${esc(n.leiter)}" placeholder="z.B. 1234567">
       <div class="zwei">
         <div><label for="nz">Training: Startzeit</label><input type="text" id="nz" value="${esc(n.zeit)}"></div>
         <div><label for="nd">Training: Dauer (Min.)</label><input type="text" id="nd" inputmode="numeric" value="${esc(n.dauer)}"></div>
@@ -719,7 +780,7 @@ function ndsHtml(daten) {
         <div><label for="nb">Bis</label><input type="date" id="nb" value="${bis}"></div>
       </div>
     </div>
-    ${!n.leiter.trim() ? '<p class="warn">Noch keine Leiter-Nummer eingetragen.</p>' : ''}
+    ${!state.leiter.length ? '<p class="warn">Noch keine Leiter erfasst (Kader → Leiter).</p>' : ''}
     ${ohneNr.length ? `<p class="warn">Ohne J+S-Nummer (werden weggelassen): ${ohneNr.map(esc).join(', ')}</p>` : ''}
     <button class="btn" id="ndsx" style="margin-top:14px">NDS-Datei herunterladen (${imBereich.length} Anlass${imBereich.length === 1 ? '' : 'e'})</button>`;
 }
@@ -728,16 +789,21 @@ function bindeNds(el, daten) {
   const feld = (id, key) => el.querySelector(id).onchange = e => {
     state.nds[key] = e.target.value.trim(); save(); render();
   };
-  feld('#nl', 'leiter'); feld('#nz', 'zeit'); feld('#nd', 'dauer'); feld('#no', 'ort');
+  feld('#nz', 'zeit'); feld('#nd', 'dauer'); feld('#no', 'ort');
   el.querySelector('#nv').onchange = e => { ndsVon = e.target.value; render(); };
   el.querySelector('#nb').onchange = e => { ndsBis = e.target.value; render(); };
   el.querySelector('#ndsx').onclick = () => exportNds(daten);
 }
 
+// Ohne Angabe (Trainings aus aelteren Versionen) gilt der Leiter als anwesend
+const leiterWarDa = (l, d) => {
+  const da = state.leiterDa[d];
+  return da && (l.name in da) ? !!da[l.name] : true;
+};
+
 function exportNds(daten) {
   const n = state.nds;
   const von = ndsVon || daten[0], bis = ndsBis || daten[daten.length - 1];
-  const leiter = n.leiter.split(/[,; ]+/).map(x => x.replace(/\D/g, '')).filter(Boolean);
   const zeilen = ['PERSONENNUMMER;FUNKTION;DATUM;AKTIVITAETSTYP;ZEIT;DAUER;ORT'];
   let anzahl = 0;
   for (const d of daten.filter(d => d >= von && d <= bis)) {
@@ -753,7 +819,7 @@ function exportNds(daten) {
       zeilen.push([nr, fn, datum, typ, a.zeit, a.dauer, aOrt].join(';'));
       anzahl++;
     };
-    leiter.forEach(nr => neu(nr, 'Leiter'));
+    state.leiter.forEach(l => { if (l.nr && leiterWarDa(l, d)) neu(l.nr, 'Leiter'); });
     state.kader.forEach(k => { if (k.nr && state.sessions[d][k.name]) neu(k.nr, 'Teilnehmer'); });
   }
   if (anzahl === 0) { toast('Nichts zu exportieren'); return; }
@@ -768,7 +834,13 @@ function nummernEinlesen(p) {
     const nr = p.nummern && p.nummern[k.name];
     if (nr && !k.nr) { k.nr = String(nr); treffer++; }
   }
-  if (p.leiter && !state.nds.leiter) state.nds.leiter = String(p.leiter);
+  for (const l of p.leiterListe || []) {
+    const da = state.leiter.find(x => x.name === l.name);
+    const gleicheNr = l.nr && state.leiter.find(x => x.nr === String(l.nr));
+    if (!da && gleicheNr) gleicheNr.name = l.name;     // alten Eintrag "Leiter" umbenennen
+    else if (!da) state.leiter.push({ name: l.name, nr: String(l.nr || '') });
+    else if (!da.nr && l.nr) da.nr = String(l.nr);
+  }
   save();
   tab = 'kader';
   render();
